@@ -4,8 +4,7 @@ import std/[
   threadpool,
   cpuinfo,
   strformat,
-  httpclient,
-  segfaults
+  httpclient
 ]
 
 # Uses macro magic to turn procs into CLIs: github.com/c-blake/cligen
