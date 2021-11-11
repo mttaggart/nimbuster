@@ -1,11 +1,7 @@
 # Usage:
 # nimbuster -u --url http://something -w --wordlist wordlist.txt
-import std/parseopt
-import std/strformat
-import std/httpclient
-import std/threadpool
+import std/parseopt, strformat, httpclient, asyncdispatch
 import strutils
-{.experimental: "parallel".}
 
 
 proc usage(): void =
@@ -31,23 +27,29 @@ proc parse_args: (string, string, seq[string]) =
         of cmdArgument:
             continue
 
-proc main(): void =
+proc request(url: string, word: string, status_codes: seq[string]): Future[string] {.async.} = 
+    let client: AsyncHttpClient = newAsyncHttpClient()
+    var r = await client.get(&"{url}/{word}")
+    let status_code = r.status.substr(0,2)
+    result = status_code
+    if status_code in status_codes:
+        echo &"\n{status_code}: {word}"
+
+proc main()  =
     let (url, wordlist, status_codes) = parse_args()
     if url == "" or wordlist == "":
         usage()
         return
     
     # Get the wordlist
+
     let f: File = open(wordlist, fmRead)
     let words: seq[string] = readAll(f).split("\n")
     for i in 0..words.len - 1:
-        let client: HttpClient = newHttpClient()
         write(stdout, &"\r{i + 1}/{words.len}")
         let word: string = words[i]
-        var r = client.get(&"{url}/{word}")
-        let status_code = r.status.substr(0,2)
-        if status_code in status_codes:
-            echo &"\n{status_code}: {word}"
+        let res = waitFor request(url, word, status_codes)
+        # echo res
 
 when isMainModule:
     main()
