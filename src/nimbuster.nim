@@ -12,8 +12,9 @@ import std/[
 import nimbuster/[types]
 
 # Uses macro magic to turn procs into complete, advanced CLIs.
-# github.com/c-blake/cligen
-import cligen
+# https://github.com/c-blake/cligen
+# We also import the `cligen/argcvt` submodule because we'll need it later.
+import cligen, cligen/argcvt
 
 # A library that prints a handy little progress bar on the screen.
 # https://github.com/euantorano/progress.nim
@@ -65,7 +66,7 @@ proc bust(url: string, wl: seq[string], channel: ptr Channel[ThreadResponse]) =
         # code in the form of the `HttpCode` type.
         (
           try:
-            # `get()` raises a `ValueError` if it can't find the response code.
+            # `code()` raises a `ValueError` if it can't find the response code.
             # Let's handle that exception just in case.
             client.get(url & w).code()
           except ValueError:
@@ -82,8 +83,11 @@ proc bust(url: string, wl: seq[string], channel: ptr Channel[ThreadResponse]) =
       )
     )
 
-proc main(
+proc nimbuster(
+  # The URL target and the path to the file we're using for our wordlist.
   url, wordlist: string,
+
+  # The number of threads we want to use.
   threads: ThreadCount = (
     block:
       # This syntax is perhaps slightly confusing, so let's break down what's
@@ -122,7 +126,9 @@ proc main(
         # cores/threads. Handle this just in case.
         #
         # I use the string concatenation operator (`&`) here just to avoid going
-        # over 80 characters per line.
+        # over 80 characters per line. This is not enforced and I don't think
+        # anyone will care if you go a little over, but I'm doing it here for
+        # the sake of posterity.
         quit "Could not automatically detect CPU cores. " &
           "Please use the `--threads` flag.", -1
         # This will raise an exception if whatever you're running this on only
@@ -132,26 +138,22 @@ proc main(
       else:
         t
   ),
-  # Let the user define their own list of valid HTTP response codes, limiting
-  # the minimum and maximum values using another custom type.
-  #
-  # (Why not just use `HttpCode` for the type of the seq? See `HttpCodeRange`'s
-  # comments in the 'types.nim' submodule for information.)
-  #
-  # We also have to type-cast the first default value to the `HttpCodeRange`
-  # type, but just one is enough for the Nim compiler to figure out the rest.
-  # Cligen will do the rest of the work for us, including restricting the range
-  # and type casting the arguments into the correct type.
-  codes: seq[HttpCodeRange] =
-    @[HttpCodeRange(200), 301, 302]
+
+  # Let the user define their own list of valid HTTP response codes. Cligen
+  # by itself doesn't know what to do with the `seq[HttpCode]` type, so later
+  # we'll write some code to help it out later.
+  codes: seq[HttpCode] =
+    @[Http200, Http301, Http302]
 ) =
-  # This is the entrypoint for the program.
+  ## A directory brute-forcer written in Nim. Because we needed another one.
+  # Cligen is clever and it will extract the above doc-comment (`##`) out of our
+  # code and use it in the '--help' text.
+
+  # This is the main entrypoint for the program.
   # 
   # `url` is the domain name to bust.
-  # 
   # `wordlist` is the path to the text file containing the list of words
   # you want to search for.
-  # 
   # `threads` is the number of threads you want to use. It defaults to half of
   # the maximum number of threads available on your machine. Here we use our
   # custom `ThreadCount` type implemented in the 'types.nim' submodule to
@@ -162,8 +164,11 @@ proc main(
 
   if threads > max_threads:
     # Prevent the `threads` argument from being greater than the number of
-    # available threads on the machine.
-    quit fmt"Your machine has a maximum of {max_threads} threads.", -1
+    # available threads on the machine. The message I use here is formatted to
+    # be similar to the messages that Cligen creates on its own, so that things
+    # seem somewhat consistent.
+    quit &"Bad value: \"{threads}\" for option \"threads\"" &
+      "; out of range for 2.." & $max_threads, -1
   # At this point, thanks to these two checks as well as our custom type,
   # it's guaranteed that the value of `threads` will be somewhere in the range
   # of `2..countProcessors()` inclusive.
@@ -218,13 +223,6 @@ proc main(
   let url =
     if url.endsWith("/"): url
     else: url & "/"
-
-  # Let's shadow an argument one more time, this time turning our seq of
-  # `HttpCodeRange`s into a seq of proper `HttpCode`s using `mapIt()`.
-  # You've already seen `filterIt()`, and this is exactly the same idea. It will
-  # return a new value for each item after performing the expression you pass in
-  # on the original value, which in this case is a simple type conversion.
-  let codes = codes.mapIt(HttpCode(it))
 
   # Let's create a seq of `Channel[ThreadResponse]` that's of length `threads`
   # minus one. Remember, we may have X threads, but we need our main thread
@@ -314,14 +312,111 @@ proc main(
     # Finally, let's close all the channels.
     close(channels[i])
 
+# Cligen by itself doesn't know what to do with the `seq[HttpCode]` type, so
+# let's teach it! We don't have to pass this proc into `dispatch()`; Cligen will
+# automatically pick it up so long as they're both defined in the same scope.
+#
+# This `argParse()` proc is what Cligen will use to turn the user's input (as a
+# string) and turn it into a proper `seq[HttpCode]`.
+#
+# `dst` is what we'll assign to in order to pass our parsed input into our
+# program's entrypoint.
+# `dfl` is the default value of the argument as we defined in our proc's
+# signature. This is provided so that, for example, you can append to the
+# default argument instead of replacing it outright. I'm not doing this here,
+# though; I just want to replace it.
+# `a` is an `ArgcvtParams` object that contains everything you could possibly
+# want to know about the argument being passed in. For our purpose, the only
+# thing we need is `a.val`, which is the string representation of what the user
+# has passed in.
+# We also return a boolean value to tell Cligen whether if our parsing was
+# successful or not. If we return `false`, Cligen will abort for us.
+proc argParse(
+  dst: var seq[HttpCode],
+  dfl: seq[HttpCode],
+  a: var ArgcvtParams
+): bool =
+  # This expression basically splits the input by commas, removes any characters
+  # that aren't numbers, discards any empty leftover strings, then parses each
+  # string into an integer before type casting it into an `HttpCode`. The reason
+  # I decided to do it this way is so that the input is extremely flexible, the
+  # only real requirements being that the input contains numbers and that each
+  # value is separated by a comma.
+  var codes = a.val.split(",").mapIt(
+    toSeq(it).filterIt(
+      it in '0'..'9'
+    ).join()
+  ).filterIt(
+    it != ""
+  ).deduplicate().mapIt(
+    parseInt(it).HttpCode
+  )
+  # We do need to make sure that the input contains something usable, so an easy
+  # way of doing that is simply to check if the length of the seq is zero.
+  # Because of how we parsed the input, it will always be empty if there weren't
+  # any numbers. Echo an error message if it's empty, and return false to tell
+  # Cligen that something went wrong. The message is styled after the messages
+  # that Cligen generates on its own.
+  if codes.len == 0:
+    echo "Bad value: \"", a.val, "\" for option \"", a.key,
+      "\"; invalid input"
+    return false
+  # Finally, we just need to validate that all of the inputs are valid HTTP
+  # codes. We can just loop over each of them and check if it's within a certain
+  # range, and if one is not, we echo an error message and tell Cligen. Once
+  # again, we try to imitate Cligen's message style.
+  for x in codes:
+    if x.int notin 100..511:
+      echo "Bad value: \"", x, "\" for option \"", a.key,
+        "\"; out of range for 100..511"
+      return false
+  # By this point, we're gauranteed to have a `seq[HttpCode]` that contains at
+  # least one usable value. Let's send it to our entrypoint and tell Cligen that
+  # everything is okay.
+  dst = codes
+  return true
+
+# This proc is used by Cligen to display relevant information in the '--help'
+# message. The first return value is just the flags that this command uses
+# ('-c, --codes'). The second return value is the type of the input, which of
+# course is going to be a `seq[HttpCode]`, shortened to 'HttpCodes'. The final
+# return value is a a string representing the default value of this argument.
+# Here I've written it as an expression that turns the default argument into a
+# list of comma-separated numbers in brackets. The `$` (string conversion)
+# operator for the `HttpCode` type will include the code's meaning at the end
+# (ex. "200 OK"), but I want to display only the number, so I use this
+# expression to display it the way that I want.
+proc argHelp(dfl: seq[HttpCode], a: var ArgcvtParams): seq[string]=
+  @[
+    a.argKeys,
+    "100..511",
+    "[" & dfl.mapIt($(it.int)).join(", ") & "]"
+  ]
+
+# While we're at it, I dislike how Cligen displays our `ThreadRange` type by
+# default... Let's override it so it can look a little nicer.
+proc argHelp(dfl: ThreadCount, a: var ArgcvtParams): seq[string]=
+  @[
+    a.argKeys,
+    # In './src/nimbuster/types.nim', I mention that `countProcessors()` is only
+    # available at runtime due to relying on the FFI. Lucky for us, this code
+    # is executed at runtime, so we can use `countProcessors()` here for our
+    # help text.
+    "2.." & $countProcessors(),
+    $dfl
+  ]
+
 # The `dispatch()` proc from cligen takes any proc as input and automagically
 # turns it into a complete CLI. We also pass in some help text to make things
 # a little more user-friendly.
-dispatch(main,
+dispatch(nimbuster,
   help = {
     "url": "The URL to scan.",
     "wordlist": "The file containing the list of words to search for.",
-    "threads": "The number of threads to use. (Range 2..MaxThreads)",
-    "codes": "The HTTP response codes to check for. (Range 100..511)"
+    "threads": "The number of threads to use.",
+    "codes": "A list of HTTP response codes to check for."
   }
 )
+
+# I'm sure Cligen has some more fancy tricks that I could be taking advantage
+# of, but I'm happy enough with it to leave it as-is. More fun for you :)

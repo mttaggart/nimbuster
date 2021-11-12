@@ -43,10 +43,3 @@ type ThreadCount* = 2..high(int)
 # just use `sync()` anymore since we need the main thread to be doing work while
 # the other threads are running.
 type ThreadResponse* = tuple[code: HttpCode, word: string, done: bool]
-
-# For some reason that I'm not sure of, Cligen does not cooperate with the
-# `HttpCode` type even though it's defined as an integer range. Maybe it's
-# because it's `distinct`, or maybe it's because it's defined using `range[]`.
-# We can work around this issue by just defining the range ourselves, which is
-# not a big deal. Cligen will happily accept our custom type.
-type HttpCodeRange* = 100..511
