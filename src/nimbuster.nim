@@ -181,10 +181,11 @@ proc nimbuster(
   # Let's tell the user what's going on. I'm formatting this in a very simple
   # way, so feel free to do something more elegant if you want.
   echo [
-      "     URL: " & url,
-      "Wordlist: " & wordlist,
-      " Threads: " & $threads,
-      "  Output: results.txt"
+      "        URL: " & url,
+      "   Wordlist: " & wordlist,
+      "    Threads: " & $threads,
+      " HTTP Codes: " & "[" & codes.mapIt($(it.int)).join(", ") & "]",
+      "     Output: results.txt"
     ].join("\n")
 
   # Split the contents of the `wordlist` file into equal-sized chunks, the
@@ -325,6 +326,9 @@ proc nimbuster(
   for i, _ in channels:
     # Finally, let's close all the channels.
     close(channels[i])
+  
+  # Tell the user that we're done.
+  echo "Finished."
 
 # Cligen by itself doesn't know what to do with the `seq[HttpCode]` type, so
 # let's teach it! We don't have to pass this proc into `dispatch()`; Cligen will
