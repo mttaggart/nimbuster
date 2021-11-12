@@ -167,11 +167,25 @@ proc nimbuster(
     # available threads on the machine. The message I use here is formatted to
     # be similar to the messages that Cligen creates on its own, so that things
     # seem somewhat consistent.
+    #
+    # Here we use the `&` macro from `std/strformat`. The reason why we use this
+    # instead of `fmt` is because `fmt` will ignore escape sequences. (ex. '\"'
+    # will evaluate to '\"', not '"'.) `&` does the same thing as `fmt` while
+    # working with escape sequences.
     quit &"Bad value: \"{threads}\" for option \"threads\"" &
       "; out of range for 2.." & $max_threads, -1
   # At this point, thanks to these two checks as well as our custom type,
   # it's guaranteed that the value of `threads` will be somewhere in the range
   # of `2..countProcessors()` inclusive.
+
+  # Let's tell the user what's going on. I'm formatting this in a very simple
+  # way, so feel free to do something more elegant if you want.
+  echo [
+      "     URL: " & url,
+      "Wordlist: " & wordlist,
+      " Threads: " & $threads,
+      "  Output: results.txt"
+    ].join("\n")
 
   # Split the contents of the `wordlist` file into equal-sized chunks, the
   # number of chunks being equal to the number of threads minus one. (Remember,
@@ -255,7 +269,7 @@ proc nimbuster(
   # In the future, I'd suggest building your own terminal UI using Illwill
   # (https://github.com/johnnovak/illwill) so that you can have both a progress
   # bar as well as realtime readouts of information while Nimbuster is running.
-  var file = open("result.txt", fmWrite)
+  var file = open("results.txt", fmWrite)
 
   # Let's create our progress bar. We need to set the total to be equal to the
   # number of words in our wordlist, as that's how we actually know how far we
@@ -358,8 +372,7 @@ proc argParse(
   # Cligen that something went wrong. The message is styled after the messages
   # that Cligen generates on its own.
   if codes.len == 0:
-    echo "Bad value: \"", a.val, "\" for option \"", a.key,
-      "\"; invalid input"
+    echo &"Bad value: \"{a.val}\" for option \"{a.key}\"; invalid input"
     return false
   # Finally, we just need to validate that all of the inputs are valid HTTP
   # codes. We can just loop over each of them and check if it's within a certain
@@ -367,8 +380,7 @@ proc argParse(
   # again, we try to imitate Cligen's message style.
   for x in codes:
     if x.int notin 100..511:
-      echo "Bad value: \"", x, "\" for option \"", a.key,
-        "\"; out of range for 100..511"
+      echo &"Bad value: \"{x}\" for option \"{a.key}\"; out of range for 100..511"
       return false
   # By this point, we're gauranteed to have a `seq[HttpCode]` that contains at
   # least one usable value. Let's send it to our entrypoint and tell Cligen that
