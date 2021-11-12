@@ -120,7 +120,10 @@ proc main(
       if t == 0:
         # `countProcessors()` returns 0 if it couldn't detect the number of
         # cores/threads. Handle this just in case.
-        quit "Could not automatically detect CPU cores." &
+        #
+        # I use the string concatenation operator (`&`) here just to avoid going
+        # over 80 characters per line.
+        quit "Could not automatically detect CPU cores. " &
           "Please use the `--threads` flag.", -1
         # This will raise an exception if whatever you're running this on only
         # has two threads, but I can't imagine you'd ever be doing that...
