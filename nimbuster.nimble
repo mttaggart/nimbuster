@@ -12,3 +12,4 @@ bin           = @["nimbuster"]
 
 requires "nim >= 1.6.0"
 requires "cligen >= 1.5.19"
+requires "progress >= 1.1.1"
