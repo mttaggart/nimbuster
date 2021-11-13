@@ -261,6 +261,16 @@ proc nimbuster(
     spawn bust(url, wordlist[i], channels[i].addr)
 
   # We'll use this seq to keep track of which threads are finished executing.
+  #
+  # This is not necessarily the best way of keeping track of threads, it's just
+  # one way you can go about it that happens to work well here. (Take a look at
+  # `std/threadpool` to get an idea of how else you might accomplish this,
+  # namely `FlowVar[T]` and `isReady()`.) This method is simply how I chose to
+  # do it, partially because it's fairly easy to grasp. I also suspect that,
+  # with this particular workload and configuration, this method may have
+  # slightly less overhead compared to using `FlowVar[T]` and `isReady()`, but
+  # that's just a theory, so take that with a grain of salt. In any case, this
+  # particular method works perfectly for our purposes.
   var status = newSeq[bool](threads - 1)
 
   # Since we're using the terminal to display a progress bar, let's just write
@@ -311,7 +321,8 @@ proc nimbuster(
     #
     # (There are a few other 'it'-style templates available, too.)
     if status.allIt(it):
-      # If every item in `status` is `true`, exit the `while` loop.
+      # If every item in `status` is `true` (meaning that every thread has
+      # finished executing), exit the `while` loop.
       break
 
   # We don't need to worry about `sync()` or anything like that because we can
