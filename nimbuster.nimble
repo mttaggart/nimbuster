@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.0"
+version       = "0.2.0"
 author        = "Michael Taggart and Reilly Moore"
 description   = "Directory brute-forcer written in Nim. Because we needed another one."
 license       = "MIT"
