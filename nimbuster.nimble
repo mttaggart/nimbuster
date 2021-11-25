@@ -11,5 +11,5 @@ bin           = @["nimbuster"]
 # Dependencies
 
 requires "nim >= 1.4.8"
-requires "progress >= 1.1.1"
+requires "termstyle >= 0.1.0"
 requires "cligen >= 1.5.19"
