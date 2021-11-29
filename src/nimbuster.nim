@@ -216,6 +216,28 @@ proc nimbuster(
     # wordlist while we're loading and assigning it. The alternative would be
     # creating a junk temporary variable to store the wordlist before we
     # `distribute()` it, but we don't need to do that since we can do this.
+    #
+    # `lines()` is not a proc, it's an iterator. Learn more:
+    #   https://nim-lang.org/docs/manual.html#iterators-and-the-for-statement
+    # What this means for us right now is that it doesn't return a
+    # `seq[string]` like we want. `toSeq()` is the solution.
+    #
+    # `toSeq()` takes any expression that can be iterated over (any
+    # data that is itself a collection of other data) and turns it into
+    # a seq. It's a little hard to explain succinctly, but essentially:
+    #[
+      lines(wordlist).toSeq()
+    ]#
+    # becomes:
+    #[
+      var result = newSeq[string]()
+      for x in lines(wordlist):
+        result.add(x)
+    ]#
+    # wherein `result` is the return value of the expression. The end
+    # result is that we have a `seq[string]` wherein each item is a line
+    # from the file `wordlist`, and we don't have to worry about opening
+    # or closing the file ourselves; it's handled for us.
     let r = lines(wordlist).toSeq().filterIt(
       not(it.startsWith("#")) and it != ""
     )
