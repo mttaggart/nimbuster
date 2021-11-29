@@ -49,20 +49,39 @@ proc main(
 
     # Get the wordlist
     # Divide it amongst the threads
-    let f: File = open(wordlist)
     let words: seq[seq[string]] = block:
-    # TODO: does lines() actually work?
-        let ws = readAll(f)
-        .splitLines()
-        .filterIt(
-            not(it.startsWith("#")) and it != ""
-        )
+        let ws =
+            # `lines()` is not a proc, it's an iterator. Learn more:
+            #   https://nim-lang.org/docs/manual.html#iterators-and-the-for-statement
+            # What this means for us right now is that it doesn't return a
+            # `seq[string]` like we want. `toSeq()` is the solution.
+            lines(wordlist)
+            # `toSeq()` takes any expression that can be iterated over (any
+            # data that is itself a collection of other data) and turns it into
+            # a seq. It's a little hard to explain succinctly, but essentially:
+            #[
+                lines(wordlist).toSeq()
+            ]#
+            # becomes:
+            #[
+                var result = newSeq[string]()
+                for x in lines(wordlist):
+                    result.add(x)
+            ]#
+            # wherein `result` is the return value of the expression. The end
+            # result is that we have a `seq[string]` wherein each item is a line
+            # from the file `wordlist`, and we don't have to worry about opening
+            # or closing the file ourselves; it's handled for us.
+            .toSeq()
+            # Business as normal from here on out...
+            .filterIt(
+                not(it.startsWith("#")) and it != ""
+            )
         wordCount = ws.len
         # Account for edge case where wordlist is smaller than threads
         if numThreads > wordCount:
             numThreads = wordCount
         ws.distribute(numThreads)
-    f.close()
      
     var complete: int = 0
 
