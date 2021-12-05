@@ -7,6 +7,7 @@ import std/[
     cpuinfo,
     strutils,
     sequtils,
+    net
 ]
 import cligen, cligen/argcvt
 import termstyle
@@ -15,7 +16,7 @@ import termstyle
 type ThreadResponse = tuple[code: HttpCode, word: string, done: bool]
 
 proc request(url: string, words: seq[string], channel: ptr Channel[ThreadResponse]) =
-    let client: HttpClient = newHttpClient()
+    let client: HttpClient = newHttpClient(sslContext=newContext(verifyMode=CVerifyNone))
     
     for i, w in words:
         let status_code = client.get(&"{url}/{w}").code()
