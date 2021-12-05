@@ -177,16 +177,9 @@ proc nimbuster(
   # At this point, thanks to these two checks as well as our custom type,
   # it's guaranteed that the value of `threads` will be somewhere in the range
   # of `2..countProcessors()` inclusive.
-
-  # Let's tell the user what's going on. I'm formatting this in a very simple
-  # way, so feel free to do something more elegant if you want.
-  echo [
-      "        URL: " & url,
-      "   Wordlist: " & wordlist,
-      "    Threads: " & $threads,
-      " HTTP Codes: " & "[" & codes.mapIt($(it.int)).join(", ") & "]",
-      "     Output: results.txt"
-    ].join("\n")
+  # There's still one more edge case, in which the length of the wordlist is
+  # lesser than the number of threads being used. We don't know how long the
+  # wordlist is yet, so let's calculate that next.
 
   # Split the contents of the `wordlist` file into equal-sized chunks, the
   # number of chunks being equal to the number of threads minus one. (Remember,
@@ -204,18 +197,36 @@ proc nimbuster(
   # The `toSeq()` template turns anything that can be iterated over into a seq.
   # (ex. `toSeq("ABC") == @['A', 'B', 'C']`)
   #
-  # We also keep track of how long the wordlist is, as we'll need it later for
-  # our progress bar.
+  # We also keep track of the total length of the wordlist, as we'll need it
+  # later for our progress bar.
   var wordcount: int
-  # Nim lets us do something called 'shadowing'. We aren't allowed to write to
-  # wordlist directly since it's an immutable argument, but we can create a new
-  # variable with the same name. Every reference to `wordlist` after this point
-  # will be referencing this new variable instead of the original argument.
-  let wordlist = block:
+  let wordlists = block:
     # We're using another `block` here, this time to get the length of the
     # wordlist while we're loading and assigning it. The alternative would be
     # creating a junk temporary variable to store the wordlist before we
     # `distribute()` it, but we don't need to do that since we can do this.
+    #
+    # `lines()` is not a proc, it's an iterator. Learn more:
+    #   https://nim-lang.org/docs/manual.html#iterators-and-the-for-statement
+    # What this means for us right now is that it doesn't return a
+    # `seq[string]` like we want. `toSeq()` is the solution.
+    #
+    # `toSeq()` takes any expression that can be iterated over (any
+    # data that is itself a collection of other data) and turns it into
+    # a seq. It's a little hard to explain succinctly, but essentially:
+    #[
+      lines(wordlist).toSeq()
+    ]#
+    # becomes:
+    #[
+      var result = newSeq[string]()
+      for x in lines(wordlist):
+        result.add(x)
+    ]#
+    # wherein `result` is the return value of the expression. The end
+    # result is that we have a `seq[string]` wherein each item is a line
+    # from the file `wordlist`, and we don't have to worry about opening
+    # or closing the file ourselves; it's handled for us.
     let r = lines(wordlist).toSeq().filterIt(
       not(it.startsWith("#")) and it != ""
     )
@@ -223,6 +234,16 @@ proc nimbuster(
     wordcount = r.len
     # Finally, distribute the wordlist and assign it to `wordlist`.
     r.distribute(threads - 1)
+
+  # Now we can handle that threading edge case from earlier. It's a very easy
+  # fix, simply `clamp()` the value of `threads` so that the range is restricted
+  # to `2..wordcount`.
+  #
+  # Nim lets us do something called 'shadowing'. We aren't allowed to write to
+  # `threads` directly since it's an immutable argument, but we can create a new
+  # variable with the same name. Every reference to `threads` after this point
+  # will be referencing this new variable instead of the original argument.
+  let threads = threads.clamp(2, wordcount)
 
   # If `url` does not already end with a forward slash, add one.
   # `std/os` implements a `/` proc that does something similar, but it will
@@ -234,13 +255,14 @@ proc nimbuster(
   # (There is https://nim-lang.org/docs/uri.html, but it's a little overkill for
   # something this simple.)
   #
-  # We also shadow the argument again, just like we did with `wordlist`.
+  # Just like we did with the `threads` variable above, let's shadow this
+  # argument too since we have no need for the old value.
   let url =
     if url.endsWith("/"): url
     else: url & "/"
 
   # Let's create a seq of `Channel[ThreadResponse]` that's of length `threads`
-  # minus one. Remember, we may have X threads, but we need our main thread
+  # minus one. Remember, we may have N threads, but we need our main thread
   # to do its own thing, so we have to subtract one.
   var channels = newSeq[Channel[ThreadResponse]](threads - 1)
   for i, _ in channels:
@@ -258,7 +280,7 @@ proc nimbuster(
   # We also pass in a pointer to each channel in the `channels` seq. `x.addr`
   # returns a pointer to `x`.
   for i in 0..<(threads - 1):
-    spawn bust(url, wordlist[i], channels[i].addr)
+    spawn bust(url, wordlists[i], channels[i].addr)
 
   # We'll use this seq to keep track of which threads are finished executing.
   #
@@ -281,6 +303,18 @@ proc nimbuster(
   # (https://github.com/johnnovak/illwill) so that you can have both a progress
   # bar as well as realtime readouts of information while Nimbuster is running.
   var file = open("results.txt", fmWrite)
+
+  # Let's tell the user what's going on. Nothing special here, just a basic
+  # `echo()`. A future implementation could create a terminal UI using Illwill
+  # (https://github.com/johnnovak/illwill). You could also provide a Unix
+  # pipe-friendly output mode with a command flag, if you so wish.
+  echo [
+      "        URL: " & url,
+      "   Wordlist: " & wordlist,
+      "    Threads: " & $threads,
+      " HTTP Codes: " & "[" & codes.mapIt($(it.int)).join(", ") & "]",
+      "     Output: results.txt"
+    ].join("\n")
 
   # Let's create our progress bar. We need to set the total to be equal to the
   # number of words in our wordlist, as that's how we actually know how far we
