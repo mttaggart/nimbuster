@@ -25,22 +25,15 @@ proc request(url: string, words: seq[string], channel: ptr Channel[ThreadRespons
 
 proc main(
     url, wordlist: string, 
-    threads: Natural = (
-        block:
-            let t = countProcessors() div 2
-            if t == 0:
-                quit "Couldn't detect CPU cores.\nPlease use the --threads flag.", -1
-            else:
-                t
-    ),
+    threads: int = 10,
     codes: seq[HttpCode] = @[Http200, Http301, Http302]
 )  = 
 
-    let max_threads = countProcessors()
+    # let max_threads = countProcessors()
 
     # Quit if threads not countable
-    if threads > max_threads:
-        quit fmt"Your machine has a max of {max_threads} threads.", -1
+    # if threads > max_threads:
+    #     quit fmt"Your machine has a max of {max_threads} threads.", -1
     
     # Assign actual number of threads
     var numThreads: int = threads - 1
@@ -60,7 +53,7 @@ proc main(
         )
         wordCount = ws.len
         # Account for edge case where wordlist is smaller than threads
-        if numThreads > wordCount:
+        if threads > wordCount:
             numThreads = wordCount
         ws.distribute(numThreads)
     f.close()
